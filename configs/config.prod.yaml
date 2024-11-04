@@ -1,0 +1,81 @@
+app:
+  name: "cloud-native-app"
+  version: "1.0.0"
+  environment: "production"
+  log_level: "error"  
+
+server:
+  host: "0.0.0.0"
+  port: 80  
+
+database:
+  host: "prod-db.website.com"
+  port: 5432
+  name: "prod_db"
+  username: "prod_user"
+  password: "secure_prod_password"
+  ssl_mode: "require"  
+
+cache:
+  host: "prod-redis.website.com"
+  port: 6379
+  db: 0
+  password: "secure_cache_password"
+
+queue:
+  host: "prod-queue.website.com"
+  port: 5672
+  username: "prod_queue_user"
+  password: "secure_queue_password"
+  vhost: "/"
+
+logging:
+  level: "info"
+  format: "json"
+  destination: "/var/log/app.log"
+  rotation:
+    size: "100MB"
+    keep: 5
+    compress: true
+
+security:
+  enable_https: true
+  tls_cert_file: "/ssl/certs/prod_cert.pem"
+  tls_key_file: "/ssl/private/prod_key.pem"
+  allowed_ips:
+    - "192.168.1.0/24"
+    - "10.0.0.0/16"
+
+monitoring:
+  prometheus_endpoint: "/metrics"
+  enable: true
+  scraping_interval: "30s"
+  alerting:
+    enabled: true
+    slack_webhook_url: "https://hooks.slack.com/services/webhook"
+
+features:
+  enable_feature_x: true
+  enable_feature_y: false
+
+rate_limiting:
+  enabled: true
+  requests_per_minute: 1000
+  burst_limit: 1500
+
+timeouts:
+  read_timeout: "30s"
+  write_timeout: "30s"
+  idle_timeout: "60s"
+
+scaling:
+  max_instances: 10
+  min_instances: 2
+  cpu_threshold: 80  
+  memory_threshold: 75  
+
+healthcheck:
+  enabled: true
+  path: "/health"
+  interval: "10s"
+  timeout: "5s"

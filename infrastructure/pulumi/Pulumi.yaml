@@ -1,0 +1,250 @@
+name: cloud-native-infrastructure
+description: Pulumi configuration for cloud-native infrastructure provisioning
+runtime:
+  name: python
+  options:
+    virtualenv: venv
+    python_version: 3.9
+
+config:
+  cloud: aws
+  aws:region: us-west-2
+  networking:vpcId: "vpc-123abc45"
+  compute:instanceType: "t3.micro"
+  database:engine: "postgresql"
+  database:version: "12.4"
+  logging:logGroupName: "cloud-native-logs"
+  security:adminCidrBlock: "203.0.113.0/24"
+
+resources:
+  # Networking Infrastructure
+  - name: vpc
+    type: aws:ec2/vpc:Vpc
+    properties:
+      cidrBlock: "10.0.0.0/16"
+      enableDnsSupport: true
+      enableDnsHostnames: true
+      tags:
+        Name: "cloud-native-vpc"
+
+  - name: public-subnet
+    type: aws:ec2/subnet:Subnet
+    properties:
+      vpcId: ${networking:vpcId}
+      cidrBlock: "10.0.1.0/24"
+      availabilityZone: "us-west-2a"
+      mapPublicIpOnLaunch: true
+      tags:
+        Name: "public-subnet"
+
+  - name: private-subnet
+    type: aws:ec2/subnet:Subnet
+    properties:
+      vpcId: ${networking:vpcId}
+      cidrBlock: "10.0.2.0/24"
+      availabilityZone: "us-west-2b"
+      tags:
+        Name: "private-subnet"
+
+  - name: internet-gateway
+    type: aws:ec2/internetGateway:InternetGateway
+    properties:
+      vpcId: ${networking:vpcId}
+      tags:
+        Name: "cloud-native-igw"
+
+  - name: public-route-table
+    type: aws:ec2/routeTable:RouteTable
+    properties:
+      vpcId: ${networking:vpcId}
+      tags:
+        Name: "public-route-table"
+
+  - name: public-route
+    type: aws:ec2/route:Route
+    properties:
+      routeTableId: ${public-route-table}
+      destinationCidrBlock: "0.0.0.0/0"
+      gatewayId: ${internet-gateway}
+
+  - name: nat-gateway
+    type: aws:ec2/natGateway:NatGateway
+    properties:
+      subnetId: ${public-subnet}
+      allocationId: eipalloc-123abc456
+
+  - name: private-route-table
+    type: aws:ec2/routeTable:RouteTable
+    properties:
+      vpcId: ${networking:vpcId}
+      tags:
+        Name: "private-route-table"
+
+  - name: private-route
+    type: aws:ec2/route:Route
+    properties:
+      routeTableId: ${private-route-table}
+      destinationCidrBlock: "0.0.0.0/0"
+      natGatewayId: ${nat-gateway}
+
+  # Security Groups
+  - name: ec2-security-group
+    type: aws:ec2/securityGroup:SecurityGroup
+    properties:
+      vpcId: ${networking:vpcId}
+      description: "Allow inbound SSH and HTTP access"
+      ingress:
+        - protocol: tcp
+          fromPort: 22
+          toPort: 22
+          cidrBlocks: ${security:adminCidrBlock}
+        - protocol: tcp
+          fromPort: 80
+          toPort: 80
+          cidrBlocks: ["0.0.0.0/0"]
+      egress:
+        - protocol: "-1"
+          fromPort: 0
+          toPort: 0
+          cidrBlocks: ["0.0.0.0/0"]
+      tags:
+        Name: "ec2-sg"
+
+  # Compute Resources
+  - name: ec2-instance
+    type: aws:ec2/instance:Instance
+    properties:
+      instanceType: ${compute:instanceType}
+      ami: ami-0abcdef12345
+      subnetId: ${public-subnet}
+      securityGroupIds: ${ec2-security-group}
+      keyName: "cloud-native-keypair"
+      tags:
+        Name: "cloud-native-ec2"
+
+  - name: auto-scaling-group
+    type: aws:autoscaling/group:Group
+    properties:
+      launchConfiguration:
+        instanceType: ${compute:instanceType}
+        ami: ami-0abcdef12345
+        keyName: "cloud-native-keypair"
+        securityGroups: ${ec2-security-group}
+      maxSize: 3
+      minSize: 1
+      vpcZoneIdentifier: ${private-subnet}
+      tags:
+        Name: "cloud-native-asg"
+
+  # Load Balancer
+  - name: load-balancer
+    type: aws:elasticloadbalancingv2/loadBalancer:LoadBalancer
+    properties:
+      subnets: ${public-subnet}
+      securityGroups: ${ec2-security-group}
+      loadBalancerType: "application"
+      tags:
+        Name: "cloud-native-alb"
+
+  - name: listener
+    type: aws:elasticloadbalancingv2/listener:Listener
+    properties:
+      loadBalancerArn: ${load-balancer}
+      port: 80
+      defaultActions:
+        - type: forward
+          targetGroupArn: ${target-group}
+
+  - name: target-group
+    type: aws:elasticloadbalancingv2/targetGroup:TargetGroup
+    properties:
+      vpcId: ${networking:vpcId}
+      protocol: HTTP
+      port: 80
+      healthCheckPath: "/health"
+      healthCheckIntervalSeconds: 30
+      targetType: instance
+
+  # RDS Database
+  - name: rds-database
+    type: aws:rds/instance:Instance
+    properties:
+      engine: ${database:engine}
+      engineVersion: ${database:version}
+      instanceClass: db.t3.micro
+      allocatedStorage: 20
+      name: cloud_native_db
+      vpcSecurityGroupIds: ${ec2-security-group}
+      dbSubnetGroupName: pulumi-db-subnet-group
+      multiAz: true
+      storageEncrypted: true
+      backupRetentionPeriod: 7
+      tags:
+        Name: "cloud-native-rds"
+
+  # CloudWatch Logging
+  - name: log-group
+    type: aws:cloudwatch/logGroup:LogGroup
+    properties:
+      retentionInDays: 7
+      logGroupName: ${logging:logGroupName}
+
+  - name: log-stream
+    type: aws:cloudwatch/logStream:LogStream
+    properties:
+      logGroupName: ${log-group}
+      logStreamName: "application-log-stream"
+
+  # IAM Role for EC2
+  - name: ec2-iam-role
+    type: aws:iam/role:Role
+    properties:
+      assumeRolePolicy: |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "ec2.amazonaws.com"
+              }
+            }
+          ]
+        }
+      tags:
+        Name: "ec2-iam-role"
+
+  - name: ec2-iam-role-policy
+    type: aws:iam/rolePolicyAttachment:RolePolicyAttachment
+    properties:
+      role: ${ec2-iam-role}
+      policyArn: "arn:aws:iam::aws:policy/AmazonEC2FullAccess"
+
+  - name: cloudwatch-agent-policy
+    type: aws:iam/policy:Policy
+    properties:
+      policyName: "CloudWatchAgentPolicy"
+      description: "Policy for EC2 to send logs to CloudWatch"
+      policy: |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+              ],
+              "Resource": "*"
+            }
+          ]
+        }
+
+  # Attach IAM Policy to EC2 IAM Role
+  - name: cloudwatch-policy-attachment
+    type: aws:iam/rolePolicyAttachment:RolePolicyAttachment
+    properties:
+      role: ${ec2-iam-role}
+      policyArn: ${cloudwatch-agent-policy}

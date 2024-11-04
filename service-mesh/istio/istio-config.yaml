@@ -1,0 +1,309 @@
+# Istio System Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: istio-system
+  labels:
+    istio-injection: enabled
+
+---
+# Gateway for External Traffic
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: ingress-gateway
+  namespace: istio-system
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    hosts:
+    - "website.com"
+    tls:
+      mode: SIMPLE
+      credentialName: website-credential
+
+---
+# VirtualService for routing traffic to microservices
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: microservice-route
+  namespace: istio-system
+spec:
+  hosts:
+  - "website.com"
+  gateways:
+  - ingress-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /service-a
+    route:
+    - destination:
+        host: service-a
+        port:
+          number: 8080
+    retries:
+      attempts: 3
+      perTryTimeout: 2s
+      retryOn: "5xx,gateway-error"
+    fault:
+      abort:
+        percentage:
+          value: 5.0
+        httpStatus: 500
+  - match:
+    - uri:
+        prefix: /service-b
+    route:
+    - destination:
+        host: service-b
+        port:
+          number: 8081
+    retries:
+      attempts: 5
+      perTryTimeout: 1s
+      retryOn: "5xx,connect-failure,refused-stream"
+
+---
+# Mutual TLS (mTLS) Policy for secure communication between services
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: istio-system
+spec:
+  mtls:
+    mode: STRICT
+
+---
+# Destination Rule for Service A
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: service-a-destination
+  namespace: istio-system
+spec:
+  host: service-a
+  trafficPolicy:
+    loadBalancer:
+      simple: LEAST_CONN
+    connectionPool:
+      http:
+        http2MaxRequests: 1000
+      tcp:
+        maxConnections: 100
+    outlierDetection:
+      consecutiveErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+    circuitBreaker:
+      maxConnections: 100
+      http1MaxPendingRequests: 100
+      http2MaxRequests: 500
+
+---
+# Destination Rule for Service B
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: service-b-destination
+  namespace: istio-system
+spec:
+  host: service-b
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    connectionPool:
+      http:
+        http2MaxRequests: 1000
+      tcp:
+        maxConnections: 200
+    outlierDetection:
+      consecutiveErrors: 3
+      interval: 5s
+      baseEjectionTime: 20s
+      maxEjectionPercent: 40
+    circuitBreaker:
+      maxConnections: 150
+      http1MaxPendingRequests: 80
+      http2MaxRequests: 400
+
+---
+# Telemetry with Prometheus
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: telemetry-metrics
+  namespace: istio-system
+spec:
+  metrics:
+  - providers:
+      - name: prometheus
+  - overrides:
+      - match:
+          metric: requests_total
+        tagOverrides:
+          request_operation:
+            value: "service-a"
+          destination_service:
+            value: "service-a"
+      - match:
+          metric: requests_total
+        tagOverrides:
+          request_operation:
+            value: "service-b"
+          destination_service:
+            value: "service-b"
+
+---
+# Envoy Filter for custom tracing
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: tracing-filter
+  namespace: istio-system
+spec:
+  configPatches:
+  - applyTo: NETWORK_FILTER
+    match:
+      listener:
+        filterChain:
+          filter:
+            name: envoy.filters.network.http_connection_manager
+    patch:
+      operation: MERGE
+      value:
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.well_known_names.v3.HttpConnectionManager
+          tracing:
+            provider:
+              name: envoy.tracers.zipkin
+              typed_config:
+                "@type": type.googleapis.com/envoy.config.trace.v3.ZipkinConfig
+                collector_cluster: zipkin
+                collector_endpoint: "/api/v2/spans"
+                trace_id_128bit: true
+
+---
+# Authorization Policy to restrict access to service-b
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-service-a-to-service-b
+  namespace: istio-system
+spec:
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/istio-system/sa/service-a"]
+    to:
+    - operation:
+        methods: ["GET", "POST"]
+        paths: ["/service-b"]
+
+---
+# Strict access control to Ingress Gateway using Authorization Policy
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: ingress-gateway-restriction
+  namespace: istio-system
+spec:
+  action: DENY
+  rules:
+  - to:
+    - operation:
+        methods: ["POST", "DELETE"]
+        paths: ["/service-a/*", "/service-b/*"]
+
+---
+# VirtualService for service-specific traffic shifting (50% rollout for service-a)
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: canary-service-a
+  namespace: istio-system
+spec:
+  hosts:
+  - "website.com"
+  gateways:
+  - ingress-gateway
+  http:
+  - route:
+    - destination:
+        host: service-a
+        subset: v1
+        port:
+          number: 8080
+      weight: 50
+    - destination:
+        host: service-a
+        subset: v2
+        port:
+          number: 8080
+      weight: 50
+
+---
+# Service subsets for rolling updates of service-a
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: service-a-destination
+  namespace: istio-system
+spec:
+  host: service-a
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+  trafficPolicy:
+    loadBalancer:
+      simple: LEAST_CONN
+
+---
+# Global Rate Limiting using EnvoyFilter
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: global-rate-limit
+  namespace: istio-system
+spec:
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: GATEWAY
+      listener:
+        filterChain:
+          filter:
+            name: envoy.filters.network.http_connection_manager
+            subFilter:
+              name: envoy.filters.http.router
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.ratelimit
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.ratelimit.v3.RateLimit
+          domain: external
+          rate_limit_service:
+            grpc_service:
+              envoy_grpc:
+                cluster_name: rate_limit_cluster
+              timeout: 0.25s

@@ -1,0 +1,79 @@
+server:
+  port: 8080
+  host: 0.0.0.0
+
+routes:
+  - path: /service-a/*
+    method: GET
+    service_name: service-a
+    service_url: http://service-a:8080
+    retries: 3
+    timeout: 5s
+    circuit_breaker:
+      enabled: true
+      failure_threshold: 50
+      recovery_timeout: 10s
+      window_size: 60s
+
+  - path: /service-b/*
+    method: POST
+    service_name: service-b
+    service_url: http://service-b:8080
+    retries: 3
+    timeout: 5s
+    circuit_breaker:
+      enabled: true
+      failure_threshold: 50
+      recovery_timeout: 10s
+      window_size: 60s
+
+security:
+  enable_jwt: true
+  jwk_url: https://auth.website.com/.well-known/jwks.json
+  issuer: https://auth.website.com
+  audience: api-gateway
+
+logging:
+  level: INFO
+  format: json
+  destination: /var/log/api-gateway.log
+
+rate_limit:
+  enabled: true
+  requests_per_second: 100
+  burst_size: 20
+
+monitoring:
+  prometheus:
+    enabled: true
+    endpoint: /metrics
+    port: 9090
+
+service_discovery:
+  provider: consul
+  consul_url: http://consul-server:8500
+  health_check:
+    interval: 30s
+    timeout: 5s
+
+cors:
+  enabled: true
+  allow_origins: "*"
+  allow_methods:
+    - GET
+    - POST
+    - PUT
+    - DELETE
+  allow_headers:
+    - Content-Type
+    - Authorization
+
+rate_limiting:
+  enabled: true
+  max_requests_per_minute: 1000
+  burst_capacity: 200
+
+tls:
+  enabled: true
+  certificate_file: /ssl/certs/gateway.crt
+  key_file: /ssl/private/gateway.key

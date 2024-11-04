@@ -1,0 +1,62 @@
+service:
+  name: service-a
+  version: 1.0.0
+
+server:
+  host: 0.0.0.0
+  port: 8080
+
+logging:
+  level: info
+  format: json
+  file: /var/log/service-a/service.log
+
+database:
+  host: db-hostname
+  port: 5432
+  name: service_a_db
+  user: service_a_user
+  password: ${DB_PASSWORD}
+  pool:
+    maxConnections: 10
+    minConnections: 2
+    maxIdleTime: 300
+
+cache:
+  host: cache-hostname
+  port: 6379
+  timeout: 5s
+  maxRetries: 3
+
+auth:
+  jwt:
+    secret: ${JWT_SECRET}
+    expiration: 3600
+  oauth:
+    provider: google
+    clientId: ${OAUTH_CLIENT_ID}
+    clientSecret: ${OAUTH_CLIENT_SECRET}
+    redirectUri: /auth/callback
+
+metrics:
+  enabled: true
+  endpoint: /metrics
+  prometheus:
+    enabled: true
+    pushGateway: push-gateway-url
+
+security:
+  enableTLS: true
+  tlsCertPath: /service-a/cert.pem
+  tlsKeyPath: /service-a/key.pem
+
+kafka:
+  brokers:
+    - broker1:9092
+    - broker2:9092
+  topic: service_a_topic
+  groupId: service_a_group
+
+features:
+  experimentalFeatureX: false
+  featureFlagY: true

@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  labels:
+    app: api-gateway
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      containers:
+      - name: api-gateway
+        image: website.com/api-gateway:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: GATEWAY_CONFIG
+          value: /etc/gateway/gateway_config.yaml
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+          limits:
+            memory: "512Mi"
+            cpu: "1"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/gateway
+          subPath: gateway_config.yaml
+      volumes:
+      - name: config-volume
+        configMap:
+          name: api-gateway-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway-service
+  labels:
+    app: api-gateway
+spec:
+  selector:
+    app: api-gateway
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: LoadBalancer
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-gateway-config
+data:
+  gateway_config.yaml: |
+    routes:
+      - path: /service-a
+        url: http://service-a.default.svc.cluster.local
+      - path: /service-b
+        url: http://service-b.default.svc.cluster.local

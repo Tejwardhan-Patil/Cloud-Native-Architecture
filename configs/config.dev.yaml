@@ -1,0 +1,129 @@
+version: 1.0
+
+environment: development
+
+# Logging Configuration
+logging:
+  level: debug
+  format: json
+  output: stdout
+
+# Database Configuration
+database:
+  type: postgres
+  host: localhost
+  port: 5432
+  username: dev_user
+  password: dev_password
+  database_name: dev_db
+  max_connections: 20
+  ssl: false
+
+# API Gateway Configuration
+api_gateway:
+  host: localhost
+  port: 8080
+  timeout: 60s
+  routes:
+    - path: /service-a
+      service: service-a
+      upstream_url: http://localhost:5000
+    - path: /service-b
+      service: service-b
+      upstream_url: http://localhost:5001
+  retry_policy:
+    attempts: 3
+    per_try_timeout: 10s
+
+# Service A Configuration
+service_a:
+  host: localhost
+  port: 5000
+  timeout: 30s
+  retry_policy:
+    attempts: 3
+    per_try_timeout: 5s
+  database:
+    host: localhost
+    port: 5432
+    username: dev_user
+    password: dev_password
+    database_name: service_a_db
+  cache:
+    enabled: true
+    type: redis
+    host: localhost
+    port: 6379
+
+# Service B Configuration
+service_b:
+  host: localhost
+  port: 5001
+  timeout: 30s
+  retry_policy:
+    attempts: 3
+    per_try_timeout: 5s
+  database:
+    host: localhost
+    port: 5432
+    username: dev_user
+    password: dev_password
+    database_name: service_b_db
+  message_queue:
+    enabled: true
+    type: kafka
+    broker_url: localhost:9092
+    topics:
+      - name: dev-topic
+        partitions: 3
+        replication_factor: 1
+
+# Service Mesh Configuration
+service_mesh:
+  enabled: true
+  istio:
+    ingress_gateway: localhost
+    mTLS: disabled
+
+# Monitoring Configuration
+monitoring:
+  enabled: true
+  prometheus:
+    host: localhost
+    port: 9090
+  grafana:
+    host: localhost
+    port: 3000
+
+# Secrets Management
+secrets_management:
+  enabled: true
+  provider: local
+  secret_path: /secrets
+
+# Security Configuration
+security:
+  jwt:
+    secret_key: dev_secret_key
+    expiration_time: 3600s
+  oauth2:
+    client_id: dev-client-id
+    client_secret: dev-client-secret
+    auth_url: http://localhost:8081/oauth2/auth
+
+# Feature Flags
+feature_flags:
+  feature_x: true
+  feature_y: false
+
+# Kubernetes Deployment
+kubernetes:
+  namespace: dev
+  service_account: dev-sa
+  resources:
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+    requests:
+      cpu: "250m"
+      memory: "128Mi"

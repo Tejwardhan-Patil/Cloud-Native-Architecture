@@ -1,0 +1,82 @@
+pipeline {
+    agent any
+
+    environment {
+        REGISTRY = "registry.website.com"
+        DOCKER_IMAGE = "${env.REGISTRY}/app"
+        K8S_NAMESPACE = "production"
+        KUBECONFIG_CRED = credentials('kubeconfig-credentials')
+        DOCKER_CRED = credentials('docker-credentials')
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main', url: 'https://github.com/repo.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    docker.withRegistry("https://${REGISTRY}", DOCKER_CRED) {
+                        def app = docker.build("${DOCKER_IMAGE}:${env.BUILD_ID}")
+                        app.push()
+                    }
+                }
+            }
+        }
+
+        stage('Run Unit Tests') {
+            steps {
+                sh '''
+                cd services/service-a
+                go test ./...
+                '''
+            }
+        }
+
+        stage('Run Integration Tests') {
+            steps {
+                sh '''
+                cd services/service-a/tests
+                go test -tags=integration ./...
+                '''
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    withCredentials([file(credentialsId: 'KUBECONFIG_CRED', variable: 'KUBECONFIG')]) {
+                        sh '''
+                        kubectl apply -f services/service-a/deployment/k8s/deployment.yaml --namespace=${K8S_NAMESPACE}
+                        kubectl apply -f services/service-a/deployment/k8s/service.yaml --namespace=${K8S_NAMESPACE}
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Tests') {
+            steps {
+                sh '''
+                cd tests/e2e
+                pytest test_e2e.py --url http://app-url
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed!'
+        }
+        always {
+            cleanWs()
+        }
+    }
+}

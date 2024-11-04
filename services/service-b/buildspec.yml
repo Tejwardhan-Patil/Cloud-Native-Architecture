@@ -1,0 +1,48 @@
+version: 0.2
+
+env:
+  variables:
+    ENVIRONMENT: "production"
+    S3_BUCKET: "artifact-bucket"
+    DOCKER_IMAGE: "service-b-image"
+    ECR_REPOSITORY: "service-b-repo"
+  secrets-manager:
+    DATABASE_PASSWORD: "db_password_secret"
+
+phases:
+  install:
+    runtime-versions:
+      java: corretto11
+      python: 3.8
+    commands:
+      - echo "Installing dependencies..."
+      - apt-get update -y
+      - apt-get install -y maven docker
+
+  pre_build:
+    commands:
+      - echo "Running pre-build steps..."
+      - mvn clean install
+      - echo "Login to Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+
+  build:
+    commands:
+      - echo "Building the Docker image..."
+      - docker build -t $DOCKER_IMAGE .
+      - docker tag $DOCKER_IMAGE:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:latest
+
+  post_build:
+    commands:
+      - echo "Pushing the Docker image to ECR..."
+      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:latest
+      - echo "Build and push complete."
+      - echo "Saving build artifacts..."
+      - aws s3 cp target/*.jar s3://$S3_BUCKET/builds/
+artifacts:
+  files:
+    - target/*.jar
+
+cache:
+  paths:
+    - '/root/.m2/**/*'

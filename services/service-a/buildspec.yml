@@ -1,0 +1,55 @@
+version: 0.2
+
+env:
+  variables:
+    ENVIRONMENT: "production"
+    REGION: "us-east-1"
+    SERVICE_NAME: "service-a"
+  secrets-manager:
+    DATABASE_PASSWORD: "/service-a/db/password"
+    API_KEY: "/service-a/api/key"
+
+phases:
+  install:
+    runtime-versions:
+      go: 1.x
+      python: 3.x
+    commands:
+      - echo "Installing dependencies..."
+      - go mod download
+      - pip install -r requirements.txt
+
+  pre_build:
+    commands:
+      - echo "Running pre-build steps..."
+      - go vet ./...
+      - go test ./...
+
+  build:
+    commands:
+      - echo "Building the application..."
+      - go build -o main ./src/main.go
+      - echo "Packaging application for deployment..."
+      - zip release.zip main config/config.yaml
+
+  post_build:
+    commands:
+      - echo "Running post-build steps..."
+      - echo "Build completed on `date`"
+
+artifacts:
+  files:
+    - release.zip
+    - config/config.yaml
+  discard-paths: yes
+
+cache:
+  paths:
+    - /root/.cache/go-build
+    - /root/.cache/pip
+
+reports:
+  coverage:
+    files:
+      - "**/coverage.out"
+    discard-paths: no

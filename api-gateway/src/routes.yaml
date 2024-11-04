@@ -1,0 +1,52 @@
+routes:
+  - path: /service-a/v1/*
+    method: GET
+    service: service-a
+    backend:
+      url: http://service-a.default.svc.cluster.local
+      timeout: 5s
+      retries: 3
+      retry_on: 5xx
+    headers:
+      add:
+        X-Request-Id: "{request_id}"
+      remove:
+        X-Forwarded-For
+    
+  - path: /service-b/v1/*
+    method: POST
+    service: service-b
+    backend:
+      url: http://service-b.default.svc.cluster.local
+      timeout: 10s
+      retries: 2
+      retry_on: 5xx
+    headers:
+      add:
+        X-Service-Token: "{auth_token}"
+  
+  - path: /service-a/v2/*
+    method: PUT
+    service: service-a-v2
+    backend:
+      url: http://service-a-v2.default.svc.cluster.local
+      timeout: 5s
+      retries: 5
+      retry_on: gateway_error
+    headers:
+      add:
+        X-Request-Id: "{request_id}"
+
+  - path: /service-mesh/metrics
+    method: GET
+    service: metrics
+    backend:
+      url: http://prometheus.default.svc.cluster.local
+      timeout: 2s
+    headers:
+      remove:
+        X-Forwarded-For
+
+global_headers:
+  X-Trace-Id: "{request_id}"
+  Cache-Control: "no-cache"

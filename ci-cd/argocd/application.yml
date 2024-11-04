@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: my-microservice
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: 'https://github.com/organization/repository'
+    targetRevision: main
+    path: services/service-a/deployment/k8s
+
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: my-namespace
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+
+  retry:
+    limit: 3
+    backoff:
+      duration: 5s
+      factor: 2
+      maxDuration: 3m
+
+  healthChecks:
+    - deployment: microservice-deployment
+
+  hooks:
+    preSync:
+      - exec:
+          command: ["/bin/sh", "-c"]
+          args: ["echo Pre-sync task here"]
+
+    postSync:
+      - exec:
+          command: ["/bin/sh", "-c"]
+          args: ["echo Post-sync task here"]

@@ -1,0 +1,300 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: service-traffic-management
+  namespace: service-mesh
+spec:
+  hosts:
+  - service-a.website.com
+  - service-b.website.com
+  gateways:
+  - service-mesh-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /service-a
+    route:
+    - destination:
+        host: service-a
+        subset: v1
+        port:
+          number: 8080
+      weight: 70
+    - destination:
+        host: service-a
+        subset: v2
+        port:
+          number: 8080
+      weight: 30
+    retries:
+      attempts: 3
+      perTryTimeout: 2s
+      retryOn: gateway-error,connect-failure,refused-stream
+    fault:
+      delay:
+        percentage:
+          value: 5
+        fixedDelay: 3s
+      abort:
+        percentage:
+          value: 10
+        httpStatus: 500
+    mirror:
+      host: service-a
+      subset: v2
+  - match:
+    - uri:
+        prefix: /service-b
+    route:
+    - destination:
+        host: service-b
+        subset: v1
+        port:
+          number: 8081
+      weight: 100
+    retries:
+      attempts: 2
+      perTryTimeout: 1s
+      retryOn: 5xx,connect-failure
+    fault:
+      delay:
+        percentage:
+          value: 2
+        fixedDelay: 2s
+    mirror:
+      host: service-b
+      subset: v2
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: service-a-destination
+  namespace: service-mesh
+spec:
+  host: service-a
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+  trafficPolicy:
+    loadBalancer:
+      simple: LEAST_CONN
+    connectionPool:
+      http:
+        http1MaxPendingRequests: 100
+        maxRequestsPerConnection: 50
+      tcp:
+        maxConnections: 1000
+    outlierDetection:
+      consecutiveErrors: 5
+      interval: 5s
+      baseEjectionTime: 3m
+      maxEjectionPercent: 50
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: service-b-destination
+  namespace: service-mesh
+spec:
+  host: service-b
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    connectionPool:
+      http:
+        http2MaxRequests: 50
+      tcp:
+        maxConnections: 500
+    outlierDetection:
+      consecutive5xxErrors: 3
+      interval: 10s
+      baseEjectionTime: 120s
+      maxEjectionPercent: 20
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: service-mesh-gateway
+  namespace: service-mesh
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: complex-routing
+  namespace: service-mesh
+spec:
+  hosts:
+  - complex.website.com
+  gateways:
+  - service-mesh-gateway
+  http:
+  - match:
+    - headers:
+        user-agent:
+          regex: ".*Mobile.*"
+    route:
+    - destination:
+        host: mobile-service
+        port:
+          number: 8082
+    retries:
+      attempts: 5
+      perTryTimeout: 3s
+      retryOn: gateway-error,connect-failure,refused-stream
+  - match:
+    - uri:
+        exact: /health
+    route:
+    - destination:
+        host: health-service
+        port:
+          number: 8083
+  - match:
+    - uri:
+        prefix: /api
+    corsPolicy:
+      allowOrigin:
+      - "*"
+      allowMethods:
+      - GET
+      - POST
+      - OPTIONS
+      allowCredentials: true
+      maxAge: "24h"
+    route:
+    - destination:
+        host: api-service
+        port:
+          number: 8084
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: circuit-breaker-rule
+  namespace: service-mesh
+spec:
+  host: api-service
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 200
+        maxRequestsPerConnection: 20
+    outlierDetection:
+      consecutive5xxErrors: 7
+      interval: 10s
+      baseEjectionTime: 2m
+      maxEjectionPercent: 80
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: blue-green-deployment
+  namespace: service-mesh
+spec:
+  hosts:
+  - blue-green.website.com
+  gateways:
+  - service-mesh-gateway
+  http:
+  - match:
+    - headers:
+        x-user-type:
+          exact: "blue"
+    route:
+    - destination:
+        host: blue-service
+        port:
+          number: 8085
+  - match:
+    - headers:
+        x-user-type:
+          exact: "green"
+    route:
+    - destination:
+        host: green-service
+        port:
+          number: 8086
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: blue-green-destination
+  namespace: service-mesh
+spec:
+  host: blue-green.website.com
+  subsets:
+  - name: blue
+    labels:
+      version: blue
+  - name: green
+    labels:
+      version: green
+  trafficPolicy:
+    loadBalancer:
+      simple: LEAST_CONN
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: canary-deployment
+  namespace: service-mesh
+spec:
+  hosts:
+  - canary.website.com
+  gateways:
+  - service-mesh-gateway
+  http:
+  - route:
+    - destination:
+        host: canary-service
+        subset: stable
+        port:
+          number: 8087
+      weight: 90
+    - destination:
+        host: canary-service
+        subset: canary
+        port:
+          number: 8088
+      weight: 10
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: canary-destination
+  namespace: service-mesh
+spec:
+  host: canary-service
+  subsets:
+  - name: stable
+    labels:
+      version: stable
+  - name: canary
+    labels:
+      version: canary
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN

@@ -1,0 +1,165 @@
+groups:
+- name: general.rules
+  rules:
+  - alert: HighCPUUsage
+    expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[1m])) * 100) > 80
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High CPU Usage Detected (instance {{ $labels.instance }})"
+      description: "CPU usage is above 80% for more than 5 minutes on instance {{ $labels.instance }}."
+  - alert: HighMemoryUsage
+    expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100 < 10
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High Memory Usage Detected (instance {{ $labels.instance }})"
+      description: "Memory usage is above 90% for more than 5 minutes on instance {{ $labels.instance }}."
+  - alert: DiskSpaceLow
+    expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.1
+    for: 10m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Low Disk Space (instance {{ $labels.instance }})"
+      description: "Disk space on the root filesystem is below 10% on instance {{ $labels.instance }}."
+
+- name: service-availability.rules
+  rules:
+  - alert: ServiceDown
+    expr: up == 0
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Service Down Alert"
+      description: "Service {{ $labels.job }} is down on instance {{ $labels.instance }}."
+  - alert: HighLatency
+    expr: histogram_quantile(0.9, rate(http_request_duration_seconds_bucket[5m])) > 1
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High HTTP Request Latency"
+      description: "Request latency above 1 second for 90% of requests on service {{ $labels.job }}."
+  - alert: HighRequestErrorRate
+    expr: increase(http_requests_total{status=~"5.."}[5m]) > 10
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High 5xx Error Rate"
+      description: "More than 10 5xx errors occurred in the last 5 minutes for service {{ $labels.job }}."
+
+- name: database.rules
+  rules:
+  - alert: DatabaseConnectionFailures
+    expr: increase(database_connection_failures_total[5m]) > 10
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Database Connection Failures"
+      description: "More than 10 database connection failures occurred in the last 5 minutes."
+  - alert: SlowQueries
+    expr: rate(database_query_duration_seconds_sum[5m]) / rate(database_query_duration_seconds_count[5m]) > 2
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Slow Database Queries Detected"
+      description: "Average query time exceeds 2 seconds for service {{ $labels.job }}."
+
+- name: network.rules
+  rules:
+  - alert: HighNetworkLatency
+    expr: rate(node_network_receive_packets_total[5m]) > 10000
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High Network Latency Detected (instance {{ $labels.instance }})"
+      description: "More than 10000 network packets received in the last 5 minutes."
+  - alert: PacketLossDetected
+    expr: rate(node_network_transmit_errs_total[5m]) > 100
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Network Packet Loss Detected (instance {{ $labels.instance }})"
+      description: "More than 100 transmission errors occurred in the last 5 minutes."
+
+- name: kubernetes.rules
+  rules:
+  - alert: KubePodCrashLooping
+    expr: increase(kube_pod_container_status_restarts_total[5m]) > 5
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Pod CrashLoopBackOff Detected (namespace {{ $labels.namespace }})"
+      description: "Pod in namespace {{ $labels.namespace }} is restarting more than 5 times in the last 5 minutes."
+  - alert: NodeNotReady
+    expr: kube_node_status_condition{condition="Ready", status="false"} == 1
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Kubernetes Node Not Ready"
+      description: "Kubernetes node {{ $labels.node }} is not ready for more than 5 minutes."
+  - alert: PodNotScheduled
+    expr: kube_pod_status_scheduled{condition="false"} == 1
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Pod Scheduling Failed"
+      description: "Pod in namespace {{ $labels.namespace }} failed to schedule for more than 5 minutes."
+
+- name: custom-application.rules
+  rules:
+  - alert: CustomApplicationErrorRate
+    expr: rate(custom_app_errors_total[5m]) > 50
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High Error Rate in Custom Application"
+      description: "More than 50 errors detected in the last 5 minutes for application {{ $labels.app_name }}."
+  - alert: CustomApplicationMemoryUsage
+    expr: container_memory_usage_bytes{container_label_com_docker_swarm_service_name="custom_app"} / container_spec_memory_limit_bytes > 0.9
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High Memory Usage in Custom Application"
+      description: "Memory usage exceeds 90% in custom application {{ $labels.app_name }}."
+  - alert: CustomApplicationLatency
+    expr: histogram_quantile(0.95, rate(custom_app_request_duration_seconds_bucket[5m])) > 0.5
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High Latency in Custom Application"
+      description: "95th percentile of request duration exceeds 500ms in custom application {{ $labels.app_name }}."
+
+- name: service-mesh.rules
+  rules:
+  - alert: ServiceMeshHighLatency
+    expr: rate(envoy_cluster_upstream_rq_time_sum[5m]) / rate(envoy_cluster_upstream_rq_time_count[5m]) > 1
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High Latency in Service Mesh Detected"
+      description: "Latency exceeds 1 second in service mesh for upstream requests."
+  - alert: ServiceMesh5xxErrors
+    expr: rate(envoy_cluster_upstream_rq_xx{status_code="5xx"}[5m]) > 10
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "5xx Errors in Service Mesh"
+      description: "More than 10 5xx errors in service mesh in the last 5 minutes."

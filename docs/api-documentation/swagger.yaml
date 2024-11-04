@@ -1,0 +1,76 @@
+openapi: 3.0.0
+info:
+  version: 1.0.0
+  title: Cloud-Native API
+  description: API documentation for the Cloud-Native microservices
+  contact:
+    name: Support Team
+    email: support@website.com
+
+servers:
+  - url: https://api.website.com
+    description: Production server
+  - url: https://staging.api.website.com
+    description: Staging server
+
+paths:
+  /service-a/endpoint:
+    get:
+      summary: Get data from Service A
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAResponse'
+      security:
+        - ApiKeyAuth: []
+
+  /service-b/endpoint:
+    post:
+      summary: Post data to Service B
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceBRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceBResponse'
+      security:
+        - ApiKeyAuth: []
+
+components:
+  schemas:
+    ServiceAResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        value:
+          type: string
+    ServiceBRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+    ServiceBResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+
+securitySchemes:
+  ApiKeyAuth:
+    type: apiKey
+    in: header
+    name: X-API-Key

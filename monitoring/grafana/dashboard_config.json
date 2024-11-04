@@ -1,0 +1,234 @@
+{
+    "dashboard": {
+      "id": null,
+      "uid": "dashboard_uid",
+      "title": "System Monitoring Dashboard",
+      "tags": ["monitoring", "system", "performance"],
+      "timezone": "browser",
+      "schemaVersion": 27,
+      "version": 1,
+      "refresh": "5s",
+      "panels": [
+        {
+          "type": "graph",
+          "title": "CPU Usage",
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "expr": "100 - (avg by(instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+              "refId": "A"
+            }
+          ],
+          "yaxes": [
+            {
+              "format": "percent",
+              "label": "CPU Usage",
+              "min": 0,
+              "max": 100
+            },
+            {
+              "format": "short"
+            }
+          ],
+          "lines": true,
+          "fill": 1
+        },
+        {
+          "type": "graph",
+          "title": "Memory Usage",
+          "gridPos": {
+            "x": 12,
+            "y": 0,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes",
+              "refId": "B"
+            }
+          ],
+          "yaxes": [
+            {
+              "format": "bytes",
+              "label": "Memory Usage"
+            },
+            {
+              "format": "short"
+            }
+          ],
+          "lines": true,
+          "fill": 1
+        },
+        {
+          "type": "graph",
+          "title": "Disk I/O",
+          "gridPos": {
+            "x": 0,
+            "y": 8,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "expr": "rate(node_disk_reads_completed_total[5m])",
+              "refId": "C",
+              "legendFormat": "Reads"
+            },
+            {
+              "expr": "rate(node_disk_writes_completed_total[5m])",
+              "refId": "D",
+              "legendFormat": "Writes"
+            }
+          ],
+          "yaxes": [
+            {
+              "format": "ops",
+              "label": "Disk Operations"
+            },
+            {
+              "format": "short"
+            }
+          ],
+          "lines": true,
+          "fill": 1,
+          "stack": false
+        },
+        {
+          "type": "graph",
+          "title": "Network Traffic",
+          "gridPos": {
+            "x": 12,
+            "y": 8,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "expr": "rate(node_network_receive_bytes_total[5m])",
+              "refId": "E",
+              "legendFormat": "Receive"
+            },
+            {
+              "expr": "rate(node_network_transmit_bytes_total[5m])",
+              "refId": "F",
+              "legendFormat": "Transmit"
+            }
+          ],
+          "yaxes": [
+            {
+              "format": "bytes",
+              "label": "Network Traffic"
+            },
+            {
+              "format": "short"
+            }
+          ],
+          "lines": true,
+          "fill": 1,
+          "stack": false
+        },
+        {
+          "type": "singlestat",
+          "title": "Uptime",
+          "gridPos": {
+            "x": 0,
+            "y": 16,
+            "w": 6,
+            "h": 4
+          },
+          "targets": [
+            {
+              "expr": "node_time_seconds - node_boot_time_seconds",
+              "refId": "G"
+            }
+          ],
+          "format": "s",
+          "prefix": "Uptime",
+          "valueFontSize": "80%"
+        },
+        {
+          "type": "singlestat",
+          "title": "Number of Processes",
+          "gridPos": {
+            "x": 6,
+            "y": 16,
+            "w": 6,
+            "h": 4
+          },
+          "targets": [
+            {
+              "expr": "sum(node_procs_running)",
+              "refId": "H"
+            }
+          ],
+          "format": "none",
+          "prefix": "Processes",
+          "valueFontSize": "80%"
+        },
+        {
+          "type": "gauge",
+          "title": "Disk Space Usage",
+          "gridPos": {
+            "x": 12,
+            "y": 16,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "expr": "100 * (1 - (node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}))",
+              "refId": "I"
+            }
+          ],
+          "unit": "percent",
+          "maxValue": 100,
+          "thresholds": "80,90",
+          "valueFontSize": "100%"
+        }
+      ],
+      "templating": {
+        "list": [
+          {
+            "type": "interval",
+            "name": "refresh",
+            "label": "Refresh Interval",
+            "query": "1m,5m,15m,30m",
+            "current": {
+              "text": "5m",
+              "value": "5m"
+            }
+          },
+          {
+            "type": "datasource",
+            "name": "datasource",
+            "label": "Datasource",
+            "query": "prometheus",
+            "current": {
+              "text": "Prometheus",
+              "value": "Prometheus"
+            }
+          }
+        ]
+      },
+      "annotations": {
+        "list": [
+          {
+            "name": "Annotations & Alerts",
+            "datasource": "Prometheus",
+            "iconColor": "rgb(255, 96, 96)",
+            "enable": true,
+            "showLine": true,
+            "target": {
+              "expr": "ALERTS{alertstate=\"firing\"}"
+            }
+          }
+        ]
+      }
+    }
+  }  

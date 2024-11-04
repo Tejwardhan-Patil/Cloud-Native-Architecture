@@ -1,0 +1,76 @@
+version: 2.1
+
+executors:
+  docker-executor:
+    docker:
+      - image: circleci/python:3.8 
+    working_directory: ~/repo
+
+jobs:
+  build:
+    executor: docker-executor
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Install dependencies
+          command: |
+            pip install -r requirements.txt  # For Python microservices
+            go mod download  # For Go microservices
+            mvn install  # For Java microservices
+      - run:
+          name: Build Docker images
+          command: |
+            docker build -t website.com/service-a:latest ./services/service-a
+            docker build -t website.com/service-b:latest ./services/service-b
+      - run:
+          name: Push Docker images to registry
+          command: |
+            docker login -u $DOCKER_USER -p $DOCKER_PASS
+            docker push website.com/service-a:latest
+            docker push website.com/service-b:latest
+
+  test:
+    executor: docker-executor
+    steps:
+      - checkout
+      - run:
+          name: Run unit tests for Service A (Go)
+          command: |
+            cd services/service-a
+            go test ./...
+      - run:
+          name: Run unit tests for Service B (Java)
+          command: |
+            cd services/service-b
+            mvn test
+      - run:
+          name: Run integration tests (Python)
+          command: |
+            cd services/service-b/tests
+            pytest integration_test.py
+
+  deploy:
+    executor: docker-executor
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Deploy to Kubernetes
+          command: |
+            kubectl apply -f ./services/service-a/deployment/k8s/deployment.yaml
+            kubectl apply -f ./services/service-a/deployment/k8s/service.yaml
+            kubectl apply -f ./services/service-b/deployment/k8s/deployment.yaml
+            kubectl apply -f ./services/service-b/deployment/k8s/service.yaml
+
+workflows:
+  version: 2
+  build_and_deploy:
+    jobs:
+      - build
+      - test:
+          requires:
+            - build
+      - deploy:
+          requires:
+            - test
